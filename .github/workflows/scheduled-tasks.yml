@@ -1,0 +1,139 @@
+name: Scheduled Tasks
+
+# Run automated tasks on a schedule
+on:
+  schedule:
+    # Weekly report - Every Monday at 9am UTC
+    - cron: '0 9 * * 1'
+  
+  # Also allow manual trigger
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'Which task to run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - weekly-report
+          - dependency-update
+          - security-audit
+          - cleanup
+
+jobs:
+  weekly-report:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 9 * * 1' || github.event.inputs.task == 'weekly-report' || github.event.inputs.task == 'all'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Generate weekly report
+      run: |
+        echo "# Weekly Report - $(date +%Y-%m-%d)" > weekly-report.md
+        echo "" >> weekly-report.md
+        echo "## Repository Activity" >> weekly-report.md
+        echo "" >> weekly-report.md
+        
+        # Get commits from last week
+        echo "### Commits This Week" >> weekly-report.md
+        git log --since='7 days ago' --oneline >> weekly-report.md || echo "No commits" >> weekly-report.md
+        echo "" >> weekly-report.md
+        
+        # Get contributor stats
+        echo "### Top Contributors" >> weekly-report.md
+        git shortlog -sn --since='7 days ago' >> weekly-report.md || echo "No activity" >> weekly-report.md
+    
+    - name: Create report issue
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const report = fs.readFileSync('weekly-report.md', 'utf8');
+          
+          await github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: `Weekly Report - ${new Date().toISOString().split('T')[0]}`,
+            body: report,
+            labels: ['report', 'automated']
+          });
+
+  dependency-update:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.task == 'dependency-update' || github.event.inputs.task == 'all'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Check for outdated dependencies
+      run: |
+        pip install pip-review
+        pip-review --auto > dependency-updates.txt || true
+    
+    - name: Create update PR if needed
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const updates = fs.readFileSync('dependency-updates.txt', 'utf8');
+          
+          if (updates.length > 0) {
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: 'Dependency Updates Available',
+              body: `## Dependencies to Update\n\n\`\`\`\n${updates}\n\`\`\``,
+              labels: ['dependencies']
+            });
+          }
+
+  security-audit:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.task == 'security-audit' || github.event.inputs.task == 'all'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Run security audit
+      run: |
+        pip install safety
+        safety check --json > security-report.json || true
+    
+    - name: Upload security report
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-report
+        path: security-report.json
+
+  cleanup:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.task == 'cleanup' || github.event.inputs.task == 'all'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Clean up old artifacts
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const artifacts = await github.rest.actions.listArtifactsForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+          });
+          
+          const oldArtifacts = artifacts.data.artifacts.filter(artifact => {
+            const age = Date.now() - new Date(artifact.created_at).getTime();
+            return age > 30 * 24 * 60 * 60 * 1000; // 30 days
+          });
+          
+          for (const artifact of oldArtifacts) {
+            await github.rest.actions.deleteArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: artifact.id,
+            });
+          }
+          
+          console.log(`Cleaned up ${oldArtifacts.length} old artifacts`);

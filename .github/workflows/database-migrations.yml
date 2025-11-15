@@ -1,0 +1,71 @@
+name: Database Migrations
+
+# Handle database schema changes safely
+on:
+  pull_request:
+    paths:
+      - 'migrations/**'
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'migrations/**'
+
+jobs:
+  validate-migrations:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up database
+      run: |
+        # Set up test database
+        echo "Setting up test database"
+        # Example: docker run -d postgres:15
+    
+    - name: Run migrations (dry run)
+      run: |
+        echo "Testing migrations"
+        # Example: alembic upgrade head --sql
+    
+    - name: Validate schema
+      run: |
+        echo "Validating database schema"
+        # Check for breaking changes
+        # Verify foreign keys
+        # Check indexes
+    
+    - name: Test rollback
+      run: |
+        echo "Testing migration rollback"
+        # Example: alembic downgrade -1
+
+  apply-migrations:
+    if: github.event_name == 'push'
+    needs: validate-migrations
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Backup database
+      run: |
+        echo "Creating database backup"
+        # Example: pg_dump > backup.sql
+    
+    - name: Apply migrations
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      run: |
+        echo "Applying migrations to ${{ github.ref == 'refs/heads/main' && 'production' || 'staging' }}"
+        # Example: alembic upgrade head
+    
+    - name: Verify migration
+      run: |
+        echo "Verifying migration success"
+        # Run health checks
+        # Verify data integrity

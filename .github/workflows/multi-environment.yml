@@ -1,0 +1,115 @@
+name: Multi-Environment Deployment
+
+# Deploy to different environments based on branch
+on:
+  push:
+    branches:
+      - main        # Production
+      - develop     # Staging
+      - 'feature/*' # Development
+
+jobs:
+  # Determine which environment to deploy to
+  determine-environment:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      url: ${{ steps.set-env.outputs.url }}
+    
+    steps:
+    - name: Determine environment
+      id: set-env
+      run: |
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+          echo "environment=production" >> $GITHUB_OUTPUT
+          echo "url=https://app.yourcompany.com" >> $GITHUB_OUTPUT
+        elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+          echo "environment=staging" >> $GITHUB_OUTPUT
+          echo "url=https://staging.yourcompany.com" >> $GITHUB_OUTPUT
+        else
+          echo "environment=development" >> $GITHUB_OUTPUT
+          echo "url=https://dev.yourcompany.com" >> $GITHUB_OUTPUT
+        fi
+
+  # Build the application
+  build:
+    needs: determine-environment
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        pip install -r web_app/requirements.txt
+        pip install pytest
+    
+    - name: Run tests
+      run: pytest test_calculator.py -v
+    
+    - name: Build application
+      run: |
+        echo "Building for ${{ needs.determine-environment.outputs.environment }}"
+        # Add your build commands here
+    
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: app-build
+        path: |
+          web_app/
+          calculator.py
+
+  # Deploy to appropriate environment
+  deploy:
+    needs: [determine-environment, build]
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ needs.determine-environment.outputs.environment }}
+      url: ${{ needs.determine-environment.outputs.url }}
+    
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: app-build
+    
+    - name: Deploy to ${{ needs.determine-environment.outputs.environment }}
+      env:
+        DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        API_KEY: ${{ secrets.API_KEY }}
+      run: |
+        echo "Deploying to ${{ needs.determine-environment.outputs.environment }}"
+        echo "URL: ${{ needs.determine-environment.outputs.url }}"
+        # Add your deployment commands here
+        # Example:
+        # scp -r . user@server:/app
+        # ssh user@server 'systemctl restart app'
+    
+    - name: Run smoke tests
+      run: |
+        echo "Running smoke tests on ${{ needs.determine-environment.outputs.url }}"
+        # Add health check commands
+        # curl ${{ needs.determine-environment.outputs.url }}/health
+
+  # Notify team of deployment
+  notify:
+    needs: [determine-environment, deploy]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Deployment status
+      run: |
+        if [[ "${{ needs.deploy.result }}" == "success" ]]; then
+          echo "✅ Deployment to ${{ needs.determine-environment.outputs.environment }} successful!"
+        else
+          echo "❌ Deployment to ${{ needs.determine-environment.outputs.environment }} failed!"
+        fi
