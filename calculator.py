@@ -16,9 +16,14 @@ def divide(a, b):
         raise ValueError("Cannot divide by zero")
     return a / b
 
+def power(base, exponent):
+    """Raise base to the power of exponent"""
+    return base ** exponent
+
 if __name__ == "__main__":
     print("Simple Calculator")
     print("5 + 3 =", add(5, 3))
     print("5 - 3 =", subtract(5, 3))
     print("5 * 3 =", multiply(5, 3))
     print("5 / 3 =", divide(5, 3))
+    print("2 ^ 3 =", power(2, 3))
