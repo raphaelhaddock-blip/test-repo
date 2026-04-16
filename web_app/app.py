@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify
 import sys
 sys.path.append('..')
-from calculator import add, subtract, multiply, divide, power
+from calculator import add, subtract, multiply, divide, power, modulo, square_root
 
 app = Flask(__name__)
 
@@ -29,6 +29,10 @@ def calculate():
             result = divide(num1, num2)
         elif operation == 'power':
             result = power(num1, num2)
+        elif operation == 'modulo':
+            result = modulo(num1, num2)
+        elif operation == 'square_root':
+            result = square_root(num1)
         else:
             return jsonify({'error': 'Invalid operation'}), 400
         
